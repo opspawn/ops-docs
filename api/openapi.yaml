@@ -1,0 +1,188 @@
+openapi: 3.0.3
+info:
+  title: Ops-core API
+  description: |-
+    API for interacting with the Ops-core orchestration engine.
+    Allows submitting tasks (including agent tasks via agentkit),
+    querying task status, and managing workflows.
+  version: 0.1.0
+servers:
+  - url: http://localhost:8000/api/v1 # Example server URL
+    description: Development server
+
+tags:
+  - name: Tasks
+    description: Operations related to individual tasks
+  - name: Workflows
+    description: Operations related to workflows (sequences of tasks)
+
+paths:
+  /tasks:
+    post:
+      tags:
+        - Tasks
+      summary: Submit a new task for execution
+      description: |-
+        Submits a task definition to the orchestration engine.
+        This can include tasks to be executed by agents via agentkit.
+        Returns a task ID for status tracking.
+      requestBody:
+        description: Task submission payload
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskSubmission'
+            example:
+              task_type: "agent_run"
+              agent_name: "research_assistant"
+              input_data:
+                query: "Summarize the latest news on AI advancements."
+                tools_allowed: ["web_search"]
+              workflow_id: "wf_123" # Optional: associate with a workflow
+              priority: 5 # Optional: task priority
+      responses:
+        '202':
+          description: Task accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                    description: Unique identifier for the submitted task.
+                    example: "task_abc789"
+        '400':
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tasks/{task_id}:
+    get:
+      tags:
+        - Tasks
+      summary: Get task status and result
+      description: Retrieves the current status and result (if available) of a specific task.
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: ID of the task to retrieve
+          schema:
+            type: string
+            example: "task_abc789"
+      responses:
+        '200':
+          description: Task status and result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStatus'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Add more paths for workflows, etc. later
+
+components:
+  schemas:
+    TaskSubmission:
+      type: object
+      required:
+        - task_type
+        - input_data
+      properties:
+        task_type:
+          type: string
+          description: Identifier for the type of task (e.g., 'agent_run', 'data_processing').
+          example: "agent_run"
+        agent_name:
+          type: string
+          description: Name of the agent to run (required if task_type is 'agent_run').
+          example: "research_assistant"
+        input_data:
+          type: object
+          description: Input data payload for the task or agent. Structure depends on task_type.
+          additionalProperties: true
+          example:
+            query: "What is the weather in London?"
+            tools_allowed: ["weather_api"]
+        workflow_id:
+          type: string
+          description: Optional ID of the workflow this task belongs to.
+          example: "wf_123"
+        priority:
+          type: integer
+          format: int32
+          description: Optional task priority (higher value means higher priority).
+          example: 10
+        callback_url:
+          type: string
+          format: url
+          description: Optional URL to notify upon task completion.
+          example: "https://example.com/webhook/task_complete"
+
+    TaskStatus:
+      type: object
+      properties:
+        task_id:
+          type: string
+          example: "task_abc789"
+        status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, FAILED, CANCELED]
+          description: Current status of the task.
+          example: "COMPLETED"
+        submitted_at:
+          type: string
+          format: date-time
+          description: Timestamp when the task was submitted.
+        started_at:
+          type: string
+          format: date-time
+          description: Timestamp when the task execution started.
+        completed_at:
+          type: string
+          format: date-time
+          description: Timestamp when the task execution finished.
+        result:
+          type: object
+          description: Output/result of the task (if completed successfully). Structure depends on task_type.
+          additionalProperties: true
+          example:
+            answer: "The weather in London is partly cloudy..."
+            steps_taken: ["Invoked weather_api", "Formatted response"]
+        error:
+          type: string
+          description: Error message if the task failed.
+          example: "Tool execution timed out."
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: An error code.
+          example: "INVALID_INPUT"
+        message:
+          type: string
+          description: A human-readable error message.
+          example: "Agent name is required for agent_run task type."
